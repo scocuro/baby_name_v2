@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko">##
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -277,6 +277,32 @@
     .bottom-btn.red { background: #fef2f2; color: #b91c1c; }
     .bottom-btn.orange { background: #fff7ed; color: #c2410c; }
 
+
+    /* Round 1 primary actions: taller mobile-friendly keep/pass buttons */
+    body[data-stage="round1"] .bottom-bar {
+      min-height: 104px;
+      max-height: 116px;
+      padding: 10px;
+      gap: 10px;
+      border-radius: 22px;
+    }
+    body[data-stage="round1"] .bottom-btn {
+      min-height: 80px;
+      padding: 12px 12px;
+      border-radius: 18px;
+      font-size: 16px;
+      line-height: 1.2;
+      letter-spacing: -.01em;
+    }
+    body[data-stage="round1"] .main,
+    body[data-stage="similarPick"] .main {
+      padding-bottom: 148px;
+    }
+    body[data-stage="round1"] .undo-peek,
+    body[data-stage="similarPick"] .undo-peek {
+      bottom: 132px;
+    }
+
     .undo-peek {
       position: fixed;
       left: 50%;
@@ -465,6 +491,10 @@
       .main { padding: 178px 10px 78px; }
       .bottom-bar { min-height: 7.8vh; max-height: 8.8vh; }
       .bottom-btn { font-size: 13px; min-height: 40px; padding: 5px 8px; }
+      body[data-stage="round1"] .bottom-bar { min-height: 104px; max-height: 116px; padding: 9px; gap: 9px; }
+      body[data-stage="round1"] .bottom-btn { min-height: 82px; font-size: 15px; padding: 12px 8px; border-radius: 17px; }
+      body[data-stage="round1"] .main, body[data-stage="similarPick"] .main { padding-bottom: 142px; }
+      body[data-stage="round1"] .undo-peek, body[data-stage="similarPick"] .undo-peek { bottom: 128px; }
       .intro-card { width: min(92vw, 380px); padding: 18px 14px; }
       .intro-primary-btn, .guide-close { width: min(176px, 54vw); min-height: 44px; padding: 10px 14px; }
       .intro-secondary-actions, .compare-actions { grid-template-columns: 1fr; }
