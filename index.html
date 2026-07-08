@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko">##
+<html lang="ko">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -358,6 +358,94 @@
     }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+
+
+    .intro-card {
+      width: min(92vw, 420px);
+      background: rgba(255,255,255,.96);
+      border: 1px solid rgba(229,231,235,.95);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      padding: 22px 18px;
+      display: grid;
+      gap: 12px;
+      justify-items: center;
+      text-align: center;
+    }
+    .survivor-count {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 16px;
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      font-size: 14px;
+      font-weight: 900;
+      color: #374151;
+    }
+    .survivor-count b { color: #111827; }
+    .skip-note {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 16px;
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      color: #9a3412;
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 1.45;
+      word-break: keep-all;
+    }
+    .intro-actions {
+      width: 100%;
+      display: grid;
+      gap: 8px;
+      justify-items: center;
+    }
+    .intro-primary-btn,
+    .guide-close {
+      width: min(188px, 56vw);
+      min-height: 44px;
+      height: auto;
+      padding: 10px 16px;
+      border-radius: 15px;
+      font-size: 14px;
+      line-height: 1.2;
+    }
+    .intro-secondary-actions {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .intro-secondary-actions .bottom-btn,
+    .compare-actions .bottom-btn {
+      min-height: 44px;
+      height: auto;
+      padding: 9px 10px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.25;
+    }
+    .compare-summary {
+      padding: 12px;
+      border-radius: 16px;
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.55;
+      color: #374151;
+      word-break: keep-all;
+    }
+    .compare-summary b { color: #111827; }
+    .compare-list { max-height: 32vh; }
+    .compare-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .compare-actions .full { grid-column: 1 / -1; }
+
     @media (max-width: 900px) {
       .check-wrap { right: 0; }
       .grid.ten { grid-template-columns: repeat(2, minmax(0,1fr)); }
@@ -377,6 +465,11 @@
       .main { padding: 178px 10px 78px; }
       .bottom-bar { min-height: 7.8vh; max-height: 8.8vh; }
       .bottom-btn { font-size: 13px; min-height: 40px; padding: 5px 8px; }
+      .intro-card { width: min(92vw, 380px); padding: 18px 14px; }
+      .intro-primary-btn, .guide-close { width: min(176px, 54vw); min-height: 44px; padding: 10px 14px; }
+      .intro-secondary-actions, .compare-actions { grid-template-columns: 1fr; }
+      .intro-secondary-actions .bottom-btn, .compare-actions .bottom-btn { min-height: 44px; padding: 9px 10px; }
+
 
       body[data-stage="round2"] .main,
       body[data-stage="round3"] .main,
@@ -528,6 +621,27 @@
     </div>
   </div>
 
+
+
+  <input type="file" id="compareFileInput" accept=".txt,text/plain" style="display:none" />
+  <div class="overlay" id="compareOverlay">
+    <div class="saved-modal compare-modal">
+      <div class="modal-head">
+        <div class="modal-title">파일로 비교하기</div>
+        <div class="modal-desc">상대방이 내보낸 TXT와 현재 진행 후보를 비교합니다.</div>
+      </div>
+      <div class="modal-body">
+        <div class="compare-summary" id="compareSummary"></div>
+        <div class="saved-list compare-list" id="compareList"></div>
+        <div class="compare-actions">
+          <button class="bottom-btn primary" id="useCommonBtn">공통 이름으로 진행</button>
+          <button class="bottom-btn gray" id="useMineBtn">내 이름으로 진행</button>
+          <button class="bottom-btn red full" id="closeCompareBtn">닫기</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <script>
@@ -558,6 +672,8 @@
       round2Batch: [],
       round2Selected: new Set(),
       round2Winners: [],
+      round2ExtraRemaining: 0,
+      round2ExtraMode: false,
 
       round3Pool: [],
       round3Batch: [],
@@ -581,7 +697,10 @@
       babyFrame: 'up',
       progressSpeechTimeline: [],
       undoStack: [],
-      bottomGestureStartY: null
+      bottomGestureStartY: null,
+      skipNotice: '',
+      compareImportedNames: [],
+      compareCommonNames: []
     };
 
     const stageArea = document.getElementById('stageArea');
@@ -605,6 +724,13 @@
     const savedOverlay = document.getElementById('savedOverlay');
     const savedList = document.getElementById('savedList');
     const closeSavedBtn = document.getElementById('closeSavedBtn');
+    const compareFileInput = document.getElementById('compareFileInput');
+    const compareOverlay = document.getElementById('compareOverlay');
+    const compareSummary = document.getElementById('compareSummary');
+    const compareList = document.getElementById('compareList');
+    const useCommonBtn = document.getElementById('useCommonBtn');
+    const useMineBtn = document.getElementById('useMineBtn');
+    const closeCompareBtn = document.getElementById('closeCompareBtn');
     const setupOverlay = document.getElementById('setupOverlay');
     const surnameInput = document.getElementById('surnameInput');
     const startBtn = document.getElementById('startBtn');
@@ -618,6 +744,11 @@
     undoPeekBtn.addEventListener('click', () => { hideUndoPeek(); undoLastSelection(); });
     closeSavedBtn.addEventListener('click', closeSavedOverlay);
     savedOverlay.addEventListener('click', (e) => { if (e.target === savedOverlay) closeSavedOverlay(); });
+    closeCompareBtn.addEventListener('click', closeCompareOverlay);
+    compareOverlay.addEventListener('click', (e) => { if (e.target === compareOverlay) closeCompareOverlay(); });
+    useCommonBtn.addEventListener('click', () => continueAfterComparison('common'));
+    useMineBtn.addEventListener('click', () => continueAfterComparison('mine'));
+    compareFileInput.addEventListener('change', handleCompareFileSelected);
 
     genderBtns.forEach(btn => {
       btn.addEventListener('click', () => {
@@ -748,6 +879,81 @@
       return Array.from(new Set(arr));
     }
 
+    const ROUND2_SKIP_THRESHOLD = 50;
+    const ROUND3_SKIP_THRESHOLD = 12;
+
+    function calcChance(total, unit) {
+      return Math.max(0, Math.floor(Math.max(0, total) / unit));
+    }
+
+    function getIntroSurvivorCount(stage = app.stage) {
+      if (stage === 'round2Intro') return app.round1Saved.length;
+      if (stage === 'round3Intro') return app.round2Winners.length;
+      if (stage === 'round4Intro') return app.round3Winners.length;
+      return getCurrentSurvivors().length;
+    }
+
+    function getComparisonBaseNames() {
+      if (app.stage === 'round3Intro') return ensureUnique(app.round2Winners);
+      return ensureUnique(app.round1Saved);
+    }
+
+    function advanceAfterRound1() {
+      const count = app.round1Saved.length;
+      app.currentCard = null;
+      app.skipNotice = '';
+
+      if (count <= 0) {
+        app.stage = 'round2Intro';
+        render();
+        return;
+      }
+
+      if (count <= 4) {
+        app.finalFour = app.round1Saved.slice();
+        app.stage = 'final';
+        render();
+        return;
+      }
+
+      if (count <= ROUND2_SKIP_THRESHOLD) {
+        app.round2Winners = app.round1Saved.slice();
+        app.initialRound2Total = count;
+        app.stage = 'round3Intro';
+        app.skipNotice = `남은 이름이 ${count.toLocaleString()}개라 2라운드는 건너뛰고 3라운드로 갈 수 있어요.`;
+        render();
+        return;
+      }
+
+      app.stage = 'round2Intro';
+      render();
+    }
+
+    function advanceAfterRound2() {
+      const count = app.round2Winners.length;
+      app.skipNotice = '';
+
+      if (count <= 4) {
+        app.round3Winners = app.round2Winners.slice();
+        app.stage = 'round4Intro';
+        app.skipNotice = `남은 이름이 ${count.toLocaleString()}개라 3라운드는 건너뛰어도 됩니다.`;
+        render();
+        return;
+      }
+
+      if (count <= ROUND3_SKIP_THRESHOLD) {
+        app.round3Winners = app.round2Winners.slice();
+        app.initialRound3Total = count;
+        app.stage = 'round4Intro';
+        app.skipNotice = `남은 이름이 ${count.toLocaleString()}개라 3라운드는 건너뛰고 토너먼트로 갈 수 있어요.`;
+        render();
+        return;
+      }
+
+      app.stage = 'round3Intro';
+      render();
+    }
+
     function allowedGenders() {
       return app.genderChoice === 'boy'
         ? new Set(['남성적', '중성적'])
@@ -781,11 +987,13 @@
       app.round2Batch = [];
       app.round2Selected = new Set();
       app.round2Winners = [];
+      app.round2ExtraRemaining = 0;
+      app.round2ExtraMode = false;
       app.round3Pool = [];
       app.round3Batch = [];
       app.round3Selected = new Set();
       app.round3Winners = [];
-      app.round3ExtraRemaining = 5;
+      app.round3ExtraRemaining = 0;
       app.round3ExtraMode = false;
       app.round4Pool = [];
       app.round4Pairs = [];
@@ -799,6 +1007,9 @@
       app.babyFrame = 'up';
       app.progressSpeechTimeline = buildProgressSpeechTimeline();
       app.undoStack = [];
+      app.skipNotice = '';
+      app.compareImportedNames = [];
+      app.compareCommonNames = [];
 
       setupOverlay.classList.remove('show');
       render();
@@ -861,6 +1072,141 @@
 
     function closeSavedOverlay() {
       savedOverlay.classList.remove('show');
+    }
+
+    function closeCompareOverlay() {
+      compareOverlay.classList.remove('show');
+    }
+
+    function downloadTxt(filename, text) {
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 500);
+    }
+
+    function exportRound1SavedTxt() {
+      if (!app.round1Saved.length) {
+        showToast('1라운드 보관 이름이 없습니다');
+        return;
+      }
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const text = app.round1Saved.map(name => fullName(name)).join('\n');
+      downloadTxt(`${app.surname}_round1_saved_${stamp}.txt`, text);
+      showToast('1라운드 보관 이름 TXT를 저장했습니다');
+    }
+
+    function parseNameTxt(text) {
+      const lines = text.split(/[\n,;\t]+/g);
+      const names = [];
+      for (const raw of lines) {
+        let cleaned = raw.replace(/^\uFEFF/, '').replace(/[^가-힣]/g, '').trim();
+        if (!cleaned) continue;
+        if (app.surname && cleaned.startsWith(app.surname) && cleaned.length > app.surname.length) {
+          cleaned = cleaned.slice(app.surname.length);
+        }
+        if (app.candidateMap[cleaned]) names.push(cleaned);
+      }
+      return ensureUnique(names);
+    }
+
+    function openCompareFilePicker() {
+      if (!app.round1Saved.length) {
+        showToast('비교할 1라운드 보관 이름이 없습니다');
+        return;
+      }
+      compareFileInput.value = '';
+      compareFileInput.click();
+    }
+
+    function handleCompareFileSelected(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => showComparisonResult(String(reader.result || ''));
+      reader.onerror = () => showToast('파일을 읽지 못했습니다');
+      reader.readAsText(file, 'utf-8');
+    }
+
+    function showComparisonResult(text) {
+      const imported = parseNameTxt(text);
+      if (!imported.length) {
+        showToast('파일에서 인식 가능한 이름을 찾지 못했습니다');
+        return;
+      }
+
+      const importedSet = new Set(imported);
+      const base = getComparisonBaseNames();
+      const common = base.filter(name => importedSet.has(name));
+      app.compareImportedNames = imported;
+      app.compareCommonNames = common;
+
+      const stageLabel = app.stage === 'round3Intro' ? '현재 2라운드 통과 후보' : '내 1라운드 보관 후보';
+      compareSummary.innerHTML = `
+        <div><b>${stageLabel}</b> ${base.length.toLocaleString()}개</div>
+        <div><b>가져온 파일</b> ${imported.length.toLocaleString()}개</div>
+        <div><b>공통으로 남은 이름</b> ${common.length.toLocaleString()}개</div>
+      `;
+
+      if (!common.length) {
+        compareList.innerHTML = '<div class="empty">공통 이름이 없습니다. 내 이름으로 계속 진행할 수 있습니다.</div>';
+        useCommonBtn.disabled = true;
+      } else {
+        const preview = common.slice(0, 80).map(name => `<div class="saved-item">${fullName(name)}</div>`).join('');
+        const more = common.length > 80 ? `<div class="empty">외 ${common.length - 80}개가 더 있습니다.</div>` : '';
+        compareList.innerHTML = preview + more;
+        useCommonBtn.disabled = false;
+      }
+      compareOverlay.classList.add('show');
+    }
+
+    function continueCurrentIntro() {
+      if (app.stage === 'round2Intro') {
+        startRound2();
+        return;
+      }
+      if (app.stage === 'round3Intro') {
+        startRound3();
+        return;
+      }
+      if (app.stage === 'round4Intro') {
+        startRound4();
+      }
+    }
+
+    function continueAfterComparison(mode) {
+      closeCompareOverlay();
+      if (mode === 'common') {
+        const common = app.compareCommonNames.slice();
+        if (!common.length) {
+          showToast('공통 이름이 없습니다');
+          return;
+        }
+        if (app.stage === 'round2Intro') {
+          app.round1Saved = common;
+          app.round2Winners = [];
+          if (common.length <= ROUND2_SKIP_THRESHOLD) {
+            advanceAfterRound1();
+          } else {
+            startRound2();
+          }
+          return;
+        }
+        if (app.stage === 'round3Intro') {
+          app.round2Winners = common;
+          if (common.length <= ROUND3_SKIP_THRESHOLD) {
+            advanceAfterRound2();
+          } else {
+            startRound3();
+          }
+          return;
+        }
+      }
+      continueCurrentIntro();
     }
 
     function renderSavedList() {
@@ -1036,13 +1382,13 @@
           renderSimilarPick();
           break;
         case 'round2Intro':
-          renderIntro('2라운드를 시작합니다.', '10개의 이름 카드 중 2개를 고릅니다.', () => startRound2());
+          renderIntro('2라운드를 시작합니다.', '10개의 이름 카드 중 2개를 고릅니다. 남은 후보가 적으면 자동으로 다음 라운드까지 건너뜁니다.', () => startRound2());
           break;
         case 'round2':
           renderRound2();
           break;
         case 'round3Intro':
-          renderIntro('3라운드를 시작합니다.', '4개 중 1개를 고릅니다. 원하면 현재 묶음에서 1개를 더 뽑을 수 있고, 그 추가 선택은 전체 5번까지만 가능합니다.', () => startRound3());
+          renderIntro('3라운드를 시작합니다.', '4개 중 1개를 고릅니다. 추가 선택 찬스는 남은 후보 10개당 1회입니다.', () => startRound3());
           break;
         case 'round3':
           renderRound3();
@@ -1062,12 +1408,30 @@
     }
 
     function renderIntro(title, desc, onStart) {
+      const count = getIntroSurvivorCount();
+      const canCompare = app.stage === 'round2Intro' || app.stage === 'round3Intro';
       stageArea.innerHTML = `
-        <div class="banner">${title}</div>
-        <div class="sub-banner">${desc}</div>
-        <button class="bottom-btn primary" id="introStartBtn">계속</button>
+        <div class="intro-card">
+          <div class="banner">${title}</div>
+          <div class="sub-banner">${desc}</div>
+          <div class="survivor-count">현재 남은 이름 <b>${count.toLocaleString()}개</b></div>
+          ${app.skipNotice ? `<div class="skip-note">${app.skipNotice}</div>` : ''}
+          <div class="intro-actions">
+            <button class="bottom-btn primary intro-primary-btn" id="introStartBtn">계속</button>
+            ${canCompare ? `
+              <div class="intro-secondary-actions">
+                <button class="bottom-btn green" id="exportRound1Btn">내 이름들 내보내기</button>
+                <button class="bottom-btn gray" id="compareRound1Btn">파일로 비교하기</button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
       `;
       document.getElementById('introStartBtn').addEventListener('click', onStart);
+      if (canCompare) {
+        document.getElementById('exportRound1Btn').addEventListener('click', exportRound1SavedTxt);
+        document.getElementById('compareRound1Btn').addEventListener('click', openCompareFilePicker);
+      }
       bottomBar.innerHTML = '';
     }
 
@@ -1095,7 +1459,15 @@
 
       if (app.stage === 'round2') {
         const need = Math.min(2, app.round2Batch.length);
-        bottomBar.innerHTML = `<button class="bottom-btn primary" id="submitRound2Btn">제출 (${app.round2Selected.size}/${need})</button>`;
+        const maxSelect = app.round2ExtraMode && app.round2ExtraRemaining > 0 ? Math.min(need + 1, app.round2Batch.length) : need;
+        const extraText = app.round2ExtraMode ? '추가 선택 끄기' : `1개 더 선택하기 (${app.round2ExtraRemaining}회 남음)`;
+        bottomBar.innerHTML = `
+          <button class="bottom-btn orange" id="extraPickRound2Btn">${extraText}</button>
+          <button class="bottom-btn primary" id="submitRound2Btn">제출 (${app.round2Selected.size}/${maxSelect})</button>
+        `;
+        const extraBtn = document.getElementById('extraPickRound2Btn');
+        extraBtn.disabled = app.round2ExtraRemaining <= 0;
+        extraBtn.addEventListener('click', toggleRound2ExtraMode);
         document.getElementById('submitRound2Btn').addEventListener('click', submitRound2Batch);
         return;
       }
@@ -1135,8 +1507,7 @@
       }
 
       if (!app.currentCard) {
-        app.stage = 'round2Intro';
-        render();
+        advanceAfterRound1();
         return;
       }
 
@@ -1311,25 +1682,29 @@
       app.round2Winners = [];
       app.round2Batch = [];
       app.round2Selected = new Set();
+      app.round2ExtraRemaining = calcChance(app.initialRound2Total, 50);
+      app.round2ExtraMode = false;
+      app.skipNotice = '';
       nextRound2Batch();
     }
 
     function nextRound2Batch() {
       if (app.round2Pool.length === 0) {
-        app.stage = 'round3Intro';
-        render();
+        advanceAfterRound2();
         return;
       }
       app.round2Batch = app.round2Pool.splice(0, Math.min(10, app.round2Pool.length));
       app.round2Selected = new Set();
+      app.round2ExtraMode = false;
       app.stage = 'round2';
       render();
     }
 
     function renderRound2() {
       const need = Math.min(2, app.round2Batch.length);
+      const maxSelect = app.round2ExtraMode && app.round2ExtraRemaining > 0 ? Math.min(need + 1, app.round2Batch.length) : need;
       stageArea.innerHTML = `
-        <div class="sub-banner">${app.round2Batch.length}개 중 ${need}개를 선택하세요.</div>
+        <div class="sub-banner">${app.round2Batch.length}개 중 기본 ${need}개를 선택하세요. 필요하면 찬스로 1개 더 고를 수 있습니다.</div>
         <div class="grid ten" id="round2Grid"></div>
       `;
       const grid = document.getElementById('round2Grid');
@@ -1341,7 +1716,7 @@
             if (app.round2Selected.has(name)) {
               app.round2Selected.delete(name);
             } else {
-              if (app.round2Selected.size >= need) return;
+              if (app.round2Selected.size >= maxSelect) return;
               app.round2Selected.add(name);
             }
             render();
@@ -1351,13 +1726,28 @@
       });
     }
 
+    function toggleRound2ExtraMode() {
+      if (app.round2ExtraRemaining <= 0) return;
+      app.round2ExtraMode = !app.round2ExtraMode;
+      const need = Math.min(2, app.round2Batch.length);
+      if (!app.round2ExtraMode && app.round2Selected.size > need) {
+        app.round2Selected = new Set(Array.from(app.round2Selected).slice(0, need));
+      }
+      render();
+    }
+
     function submitRound2Batch() {
       const need = Math.min(2, app.round2Batch.length);
-      if (app.round2Selected.size !== need) {
-        showToast(`이번 묶음에서는 정확히 ${need}개를 골라야 합니다`);
+      const maxSelect = app.round2ExtraMode && app.round2ExtraRemaining > 0 ? Math.min(need + 1, app.round2Batch.length) : need;
+      if (app.round2Selected.size < need || app.round2Selected.size > maxSelect) {
+        showToast(`이번 묶음에서는 ${need}개${maxSelect > need ? ` 또는 ${maxSelect}개` : ''}를 골라야 합니다`);
         return;
       }
-      app.round2Winners.push(...Array.from(app.round2Selected));
+      const selected = Array.from(app.round2Selected);
+      app.round2Winners.push(...selected);
+      if (selected.length > need && app.round2ExtraMode && app.round2ExtraRemaining > 0) {
+        app.round2ExtraRemaining -= 1;
+      }
       nextRound2Batch();
     }
 
@@ -1367,7 +1757,9 @@
       app.round3Winners = [];
       app.round3Batch = [];
       app.round3Selected = new Set();
+      app.round3ExtraRemaining = calcChance(app.initialRound3Total, 10);
       app.round3ExtraMode = false;
+      app.skipNotice = '';
       nextRound3Batch();
     }
 
@@ -1544,15 +1936,8 @@
         return;
       }
       const text = app.finalFour.map(name => fullName(name)).join('\n');
-      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-      const a = document.createElement('a');
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${app.surname}_final4_${stamp}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 500);
+      downloadTxt(`${app.surname}_final4_${stamp}.txt`, text);
       showToast('최종 4개 TXT를 저장했습니다');
     }
   </script>
