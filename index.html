@@ -233,6 +233,28 @@
     .grid.two { grid-template-columns: repeat(2, minmax(0,1fr)); max-width: 700px; }
     .grid.similar.one { grid-template-columns: 1fr; max-width: 360px; }
     .grid.similar.multi { grid-template-columns: repeat(2, minmax(0,1fr)); max-width: 360px; }
+    .similar-wrap {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    .similar-prompt {
+      width: min(92vw, 420px);
+      background: rgba(255,255,255,.92);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 12px 14px;
+      font-size: 14px;
+      line-height: 1.55;
+      font-weight: 900;
+      color: #374151;
+      text-align: center;
+      word-break: keep-all;
+      box-shadow: 0 8px 20px rgba(15,23,42,.08);
+    }
 
     .pick-card {
       background: var(--panel); border-radius: 22px; box-shadow: var(--shadow);
@@ -714,9 +736,9 @@
       round1TrendShown: {1:0,2:0,3:0,4:0,5:0},
       currentCard: null,
       similarPrimary: null,
+      similarAction: null,
       similarShown: [],
       similarSelected: new Set(),
-      similarOriginAction: null,
 
       round2Pool: [],
       round2Batch: [],
@@ -919,9 +941,9 @@
         app.round1TrendShown[last.primary.trend] = Math.max(0, (app.round1TrendShown[last.primary.trend] || 0) - 1);
         app.currentCard = last.primary;
         app.similarPrimary = null;
+        app.similarAction = null;
         app.similarShown = [];
         app.similarSelected = new Set();
-        app.similarOriginAction = null;
         app.stage = "round1";
       }
       logChoice('undo', { undoneType: last.type });
@@ -1061,9 +1083,9 @@
       app.round1TrendShown = {1:0,2:0,3:0,4:0,5:0};
       app.currentCard = null;
       app.similarPrimary = null;
+        app.similarAction = null;
       app.similarShown = [];
       app.similarSelected = new Set();
-      app.similarOriginAction = null;
       app.round2Pool = [];
       app.round2Batch = [];
       app.round2Selected = new Set();
@@ -1238,9 +1260,9 @@
           round1TrendShown: {...app.round1TrendShown},
           currentCardName: app.currentCard ? app.currentCard.name : null,
           similarPrimary: app.similarPrimary,
+          similarAction: app.similarAction,
           similarShown: app.similarShown.slice(),
           similarSelected: Array.from(app.similarSelected),
-          similarOriginAction: app.similarOriginAction,
           round2Pool: app.round2Pool.slice(),
           round2Batch: app.round2Batch.slice(),
           round2Selected: Array.from(app.round2Selected),
@@ -1341,9 +1363,9 @@
       app.round1TrendShown = {...{1:0,2:0,3:0,4:0,5:0}, ...(state.round1TrendShown || {})};
       app.currentCard = state.currentCardName && app.candidateMap[state.currentCardName] ? app.candidateMap[state.currentCardName] : null;
       app.similarPrimary = state.similarPrimary || null;
+      app.similarAction = state.similarAction === 'discard' ? 'discard' : (state.similarAction === 'keep' ? 'keep' : (app.similarPrimary ? 'keep' : null));
       app.similarShown = validNames(state.similarShown);
       app.similarSelected = new Set(validNames(state.similarSelected));
-      app.similarOriginAction = state.similarOriginAction === 'discard' ? 'discard' : (state.similarOriginAction === 'keep' ? 'keep' : null);
 
       app.round2Pool = validNames(state.round2Pool);
       app.round2Batch = validNames(state.round2Batch);
@@ -1756,7 +1778,11 @@
       }
 
       if (app.stage === 'similarPick') {
-        bottomBar.innerHTML = `<button class="bottom-btn primary" id="submitSimilarBtn">제출</button>`;
+        const similarAction = app.similarAction || 'keep';
+        const hasSelection = app.similarSelected.size > 0;
+        const buttonLabel = similarAction === 'discard' && !hasSelection ? '넘기기' : '보관하기';
+        const buttonClass = buttonLabel === '넘기기' ? 'red' : 'green';
+        bottomBar.innerHTML = `<button class="bottom-btn ${buttonClass}" id="submitSimilarBtn">${buttonLabel}</button>`;
         document.getElementById('submitSimilarBtn').addEventListener('click', submitSimilarPick);
         return;
       }
@@ -1897,17 +1923,16 @@
       }
     }
 
-    function openSimilarPick(current, originAction) {
-      if (!app.similarMode) return false;
-
+    function startSimilarPick(current, action) {
+      if (!app.similarMode || !current) return false;
       const comp = similarityMap[current.name] || [];
       const allowed = comp.filter(name => name !== current.name && app.round1Remaining.includes(name) && app.candidateMap[name]);
       if (!allowed.length) return false;
 
       app.similarPrimary = current.name;
-      app.similarOriginAction = originAction;
+      app.similarAction = action;
       app.similarShown = sample(allowed, Math.min(3, allowed.length));
-      app.similarSelected = new Set(originAction === 'keep' ? [current.name] : []);
+      app.similarSelected = new Set(action === 'keep' ? [current.name] : []);
       app.stage = 'similarPick';
       render();
       return true;
@@ -1917,7 +1942,7 @@
       const current = consumeRound1Current();
       if (!current) return;
 
-      if (openSimilarPick(current, 'keep')) return;
+      if (startSimilarPick(current, 'keep')) return;
 
       addRound1Saved([current.name]);
       logChoice('round1_keep', { selected: current.name, selectedFull: fullName(current.name) });
@@ -1930,7 +1955,7 @@
       const current = consumeRound1Current();
       if (!current) return;
 
-      if (openSimilarPick(current, 'discard')) return;
+      if (startSimilarPick(current, 'discard')) return;
 
       logChoice('round1_discard', { selected: current.name, selectedFull: fullName(current.name) });
       pushUndo({ type: 'discard', item: current });
@@ -1941,19 +1966,33 @@
     function renderSimilarPick() {
       const primary = app.candidateMap[app.similarPrimary];
       const similars = app.similarShown.map(name => app.candidateMap[name]).filter(Boolean);
-      const one = similars.length === 0;
-      const originText = app.similarOriginAction === 'discard'
-        ? '넘긴 이름과 비슷한 후보입니다. 마음에 드는 이름만 체크해서 보관하세요.'
-        : '보관한 이름과 비슷한 후보입니다. 최초 선택 이름도 다시 눌러 체크를 바꿀 수 있습니다.';
+      const action = app.similarAction || 'keep';
+
+      if (!primary || !similars.length) {
+        app.similarPrimary = null;
+        app.similarAction = null;
+        app.similarShown = [];
+        app.similarSelected = new Set();
+        app.stage = 'round1';
+        render();
+        return;
+      }
+
+      const cards = action === 'discard' ? similars : [primary, ...similars];
+      const one = cards.length === 1;
+      const prompt = action === 'discard'
+        ? '넘긴 이름과 유사한 이름이에요. 혹시 이 중에는 맘에 드는 이름이 있으신가요?'
+        : '보관한 이름과 유사한 이름이에요. 보관할 이름을 다시 선택할 수 있어요.';
 
       stageArea.innerHTML = `
-        <div class="sub-banner">${originText}</div>
-        <div class="grid similar ${one ? 'one' : 'multi'}" id="similarGrid"></div>
+        <div class="similar-wrap">
+          <div class="similar-prompt">${prompt}</div>
+          <div class="grid similar ${one ? 'one' : 'multi'}" id="similarGrid"></div>
+        </div>
       `;
 
       const grid = document.getElementById('similarGrid');
-      const allItems = [primary, ...similars].filter(Boolean);
-      allItems.forEach(item => {
+      cards.forEach(item => {
         const card = createPickCard(item, {
           selected: app.similarSelected.has(item.name),
           onClick: () => {
@@ -1967,31 +2006,28 @@
     }
 
     function submitSimilarPick() {
-      const selectedNames = Array.from(app.similarSelected);
-      const primaryObj = app.candidateMap[app.similarPrimary];
-      addRound1Saved(selectedNames);
-      logChoice('round1_similar_review', {
-        originAction: app.similarOriginAction || 'keep',
-        primary: app.similarPrimary,
-        shown: app.similarShown.slice(),
+      const primaryName = app.similarPrimary;
+      const action = app.similarAction || 'keep';
+      const primaryObj = app.candidateMap[primaryName];
+      const validSelectable = new Set(action === 'discard' ? app.similarShown : [primaryName, ...app.similarShown]);
+      const selectedNames = ensureUnique(Array.from(app.similarSelected).filter(name => validSelectable.has(name) && app.candidateMap[name]));
+
+      if (selectedNames.length) addRound1Saved(selectedNames);
+      logChoice(action === 'discard' ? 'round1_similar_discard' : 'round1_similar_keep', {
+        primary: primaryName,
+        action,
         selected: selectedNames,
         selectedFull: selectedNames.map(fullName)
       });
       app.round1Remaining = app.round1Remaining.filter(name => !app.similarShown.includes(name));
-      pushUndo({
-        type: 'similar',
-        primary: primaryObj,
-        originAction: app.similarOriginAction || 'keep',
-        savedNames: selectedNames,
-        restoreNames: [app.similarPrimary, ...app.similarShown]
-      });
+      pushUndo({ type: 'similar', action, primary: primaryObj, savedNames: selectedNames, restoreNames: [primaryName, ...app.similarShown] });
 
       app.similarPrimary = null;
+      app.similarAction = null;
       app.similarShown = [];
       app.similarSelected = new Set();
-      app.similarOriginAction = null;
       app.stage = 'round1';
-      showToast(selectedNames.length ? '유사사례 선택을 반영했습니다' : '이번 유사사례는 모두 넘겼습니다');
+      showToast(selectedNames.length ? '선택한 이름을 보관했습니다' : '유사한 이름을 넘겼습니다');
       render();
     }
 
