@@ -56,8 +56,6 @@
     .actions {
       display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center;
     }
-    .state-actions .pill { min-height: 36px; }
-    .setup-load-btn { min-height: 44px; }
     .pill {
       border: none; border-radius: 999px; padding: 8px 12px; font-size: 12px; font-weight: 900;
       background: #eef2ff; color: #1f2937; cursor: pointer;
@@ -375,6 +373,19 @@
       min-height: 68px; display:flex; align-items:center; justify-content:center;
       word-break: keep-all;
     }
+    .saved-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .saved-actions .bottom-btn {
+      min-height: 44px;
+      height: auto;
+      padding: 9px 10px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.25;
+    }
     .empty {
       font-size: 14px; color: var(--muted); line-height: 1.7; font-weight: 700; text-align: center; padding: 18px 6px;
     }
@@ -499,8 +510,8 @@
       body[data-stage="round1"] .undo-peek, body[data-stage="similarPick"] .undo-peek { bottom: 128px; }
       .intro-card { width: min(92vw, 380px); padding: 18px 14px; }
       .intro-primary-btn, .guide-close { width: min(176px, 54vw); min-height: 44px; padding: 10px 14px; }
-      .intro-secondary-actions, .compare-actions { grid-template-columns: 1fr; }
-      .intro-secondary-actions .bottom-btn, .compare-actions .bottom-btn { min-height: 44px; padding: 9px 10px; }
+      .intro-secondary-actions, .compare-actions, .saved-actions { grid-template-columns: 1fr; }
+      .intro-secondary-actions .bottom-btn, .compare-actions .bottom-btn, .saved-actions .bottom-btn { min-height: 44px; padding: 9px 10px; }
 
 
       body[data-stage="round2"] .main,
@@ -575,10 +586,9 @@
           <div>
             <div class="title">엄마 내 이름</div>
           </div>
-          <div class="actions state-actions">
-            <button class="pill green" id="saveStateBtn">진행 저장</button>
+          <div class="actions">
+            <button class="pill green" id="saveStateBtn">저장</button>
             <button class="pill gray" id="loadStateBtn">불러오기</button>
-            <button class="pill gray" id="skipRoundBtn">다음 라운드로 바로 가기</button>
           </div>
         </div>
         <div class="stats" id="statsBox"></div>
@@ -631,7 +641,6 @@
           </div>
         </div>
         <button class="bottom-btn primary" id="startBtn">시작하기</button>
-        <button class="bottom-btn gray setup-load-btn" id="loadStateSetupBtn">저장 파일 불러오기</button>
       </div>
     </div>
   </div>
@@ -651,6 +660,10 @@
       </div>
       <div class="modal-body">
         <div class="saved-list" id="savedList"></div>
+        <div class="saved-actions">
+          <button class="bottom-btn green" id="exportSavedBtn">TXT 내보내기</button>
+          <button class="bottom-btn gray" id="copySavedBtn">내역 복사</button>
+        </div>
         <button class="bottom-btn gray" id="closeSavedBtn">닫기</button>
       </div>
     </div>
@@ -659,7 +672,7 @@
 
 
   <input type="file" id="compareFileInput" accept=".txt,text/plain" style="display:none" />
-  <input type="file" id="stateFileInput" accept=".json,application/json,text/plain" style="display:none" />
+  <input type="file" id="loadStateInput" accept=".json,application/json" style="display:none" />
   <div class="overlay" id="compareOverlay">
     <div class="saved-modal compare-modal">
       <div class="modal-head">
@@ -737,7 +750,8 @@
       skipNotice: '',
       compareImportedNames: [],
       compareCommonNames: [],
-      choiceLog: []
+      choiceHistory: [],
+      conditionBaseTotal: 0
     };
 
     const stageArea = document.getElementById('stageArea');
@@ -756,15 +770,16 @@
     const savedOpenBtn = document.getElementById('savedOpenBtn');
     const saveStateBtn = document.getElementById('saveStateBtn');
     const loadStateBtn = document.getElementById('loadStateBtn');
-    const skipRoundBtn = document.getElementById('skipRoundBtn');
     const undoPeekBtn = document.getElementById('undoPeekBtn');
     const guideOverlay = document.getElementById('guideOverlay');
     const guideCloseBtn = document.getElementById('guideCloseBtn');
     const savedOverlay = document.getElementById('savedOverlay');
     const savedList = document.getElementById('savedList');
+    const exportSavedBtn = document.getElementById('exportSavedBtn');
+    const copySavedBtn = document.getElementById('copySavedBtn');
     const closeSavedBtn = document.getElementById('closeSavedBtn');
     const compareFileInput = document.getElementById('compareFileInput');
-    const stateFileInput = document.getElementById('stateFileInput');
+    const loadStateInput = document.getElementById('loadStateInput');
     const compareOverlay = document.getElementById('compareOverlay');
     const compareSummary = document.getElementById('compareSummary');
     const compareList = document.getElementById('compareList');
@@ -774,18 +789,17 @@
     const setupOverlay = document.getElementById('setupOverlay');
     const surnameInput = document.getElementById('surnameInput');
     const startBtn = document.getElementById('startBtn');
-    const loadStateSetupBtn = document.getElementById('loadStateSetupBtn');
     const genderBtns = Array.from(document.querySelectorAll('.gender-btn'));
     const toastEl = document.getElementById('toast');
 
     drawerToggleBtn.addEventListener('click', () => drawer.classList.toggle('open'));
     savedOpenBtn.addEventListener('click', openSavedOverlay);
     saveStateBtn.addEventListener('click', saveStateToFile);
-    loadStateBtn.addEventListener('click', openStateFilePicker);
-    loadStateSetupBtn.addEventListener('click', openStateFilePicker);
-    skipRoundBtn.addEventListener('click', skipToNextRound);
+    loadStateBtn.addEventListener('click', openLoadStatePicker);
     guideCloseBtn.addEventListener('click', () => guideOverlay.classList.remove('show'));
     undoPeekBtn.addEventListener('click', () => { hideUndoPeek(); undoLastSelection(); });
+    exportSavedBtn.addEventListener('click', exportCurrentSavedTxt);
+    copySavedBtn.addEventListener('click', copyCurrentSavedList);
     closeSavedBtn.addEventListener('click', closeSavedOverlay);
     savedOverlay.addEventListener('click', (e) => { if (e.target === savedOverlay) closeSavedOverlay(); });
     closeCompareBtn.addEventListener('click', closeCompareOverlay);
@@ -793,7 +807,7 @@
     useCommonBtn.addEventListener('click', () => continueAfterComparison('common'));
     useMineBtn.addEventListener('click', () => continueAfterComparison('mine'));
     compareFileInput.addEventListener('change', handleCompareFileSelected);
-    stateFileInput.addEventListener('change', handleStateFileSelected);
+    loadStateInput.addEventListener('change', handleLoadStateSelected);
 
     genderBtns.forEach(btn => {
       btn.addEventListener('click', () => {
@@ -850,6 +864,23 @@
       return [PROGRESS_SPEECH_FIRST, ...shuffle(PROGRESS_SPEECH_MIDDLE), PROGRESS_SPEECH_LAST];
     }
 
+    function getGenderLabel() {
+      return app.genderChoice === 'boy' ? '남자아이' : '여자아이';
+    }
+
+    function logChoice(action, detail = {}) {
+      app.choiceHistory.push({
+        time: new Date().toISOString(),
+        stage: app.stage,
+        round: getRoundLabel(),
+        action,
+        ...detail
+      });
+      if (app.choiceHistory.length > 5000) {
+        app.choiceHistory = app.choiceHistory.slice(-5000);
+      }
+    }
+
     function pushUndo(entry) {
       app.undoStack.push(entry);
       if (app.undoStack.length > 20) app.undoStack.shift();
@@ -891,7 +922,7 @@
         app.similarSelected = new Set();
         app.stage = "round1";
       }
-      logChoice('undo', { undoneType: last.type, name: last.item?.name || last.primary?.name || null, names: last.savedNames || [] });
+      logChoice('undo', { undoneType: last.type });
       hideUndoPeek();
       render();
       showToast("이전 선택을 취소했어요");
@@ -1019,6 +1050,7 @@
       const allow = allowedGenders();
       app.filteredCandidates = CANDIDATES.filter(c => allow.has(c.gender));
       app.candidateMap = Object.fromEntries(app.filteredCandidates.map(c => [c.name, c]));
+      app.conditionBaseTotal = app.filteredCandidates.length;
 
       app.started = true;
       app.stage = 'round1';
@@ -1056,8 +1088,8 @@
       app.skipNotice = '';
       app.compareImportedNames = [];
       app.compareCommonNames = [];
-      app.choiceLog = [];
-      logChoice('start', { surname: app.surname, genderChoice: app.genderChoice, filteredCount: app.filteredCandidates.length });
+      app.choiceHistory = [];
+      logChoice('start', { surname: app.surname, gender: getGenderLabel(), total: app.conditionBaseTotal });
 
       setupOverlay.classList.remove('show');
       render();
@@ -1137,235 +1169,219 @@
       setTimeout(() => URL.revokeObjectURL(a.href), 500);
     }
 
-
-    function normalizeName(name) {
-      return String(name || '').replace(app.surname, '').replace(/\s+/g, '').trim();
+    function getCurrentSavedText() {
+      const list = getCurrentSurvivors();
+      return list.map(name => fullName(name)).join('\n');
     }
 
-    function logChoice(action, detail = {}) {
-      if (!Array.isArray(app.choiceLog)) app.choiceLog = [];
-      app.choiceLog.push({
-        at: new Date().toISOString(),
-        stage: app.stage,
-        action,
-        ...detail
-      });
+    function exportCurrentSavedTxt() {
+      const text = getCurrentSavedText();
+      if (!text) {
+        showToast('내보낼 이름이 없습니다');
+        return;
+      }
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const safeRound = getRoundLabel().replace(/[^가-힣0-9]/g, '');
+      downloadTxt(`${app.surname}_${safeRound}_names_${stamp}.txt`, text);
+      showToast('현재 보관함 TXT를 저장했습니다');
     }
 
-    function serializeUndoEntry(entry) {
-      const out = { ...entry };
-      if (entry.item) {
-        out.itemName = entry.item.name;
-        delete out.item;
+    function copyTextToClipboard(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        return navigator.clipboard.writeText(text);
       }
-      if (entry.primary) {
-        out.primaryName = entry.primary.name;
-        delete out.primary;
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        return Promise.resolve();
+      } catch (err) {
+        return Promise.reject(err);
+      } finally {
+        textarea.remove();
       }
-      return out;
     }
 
-    function restoreUndoEntry(entry) {
-      const out = { ...entry };
-      if (entry.itemName) {
-        out.item = app.candidateMap[entry.itemName] || { name: entry.itemName, trend: 0, gender: '' };
-        delete out.itemName;
+    function copyCurrentSavedList() {
+      const text = getCurrentSavedText();
+      if (!text) {
+        showToast('복사할 이름이 없습니다');
+        return;
       }
-      if (entry.primaryName) {
-        out.primary = app.candidateMap[entry.primaryName] || { name: entry.primaryName, trend: 0, gender: '' };
-        delete out.primaryName;
-      }
-      return out;
+      copyTextToClipboard(text)
+        .then(() => showToast('현재 보관함 내역을 복사했습니다'))
+        .catch(() => showToast('복사에 실패했습니다. TXT 내보내기를 이용해주세요'));
     }
 
-    function getSerializableState() {
+    function serializeState() {
       return {
-        started: app.started,
-        surname: app.surname,
-        genderChoice: app.genderChoice,
-        similarMode: app.similarMode,
-        filteredCandidateNames: app.filteredCandidates.map(c => c.name),
-        stage: app.stage,
-        round1Remaining: app.round1Remaining.slice(),
-        round1Saved: app.round1Saved.slice(),
-        round1TrendShown: { ...app.round1TrendShown },
-        currentCardName: app.currentCard?.name || null,
-        similarPrimary: app.similarPrimary,
-        similarShown: app.similarShown.slice(),
-        similarSelected: Array.from(app.similarSelected || []),
-        round2Pool: app.round2Pool.slice(),
-        round2Batch: app.round2Batch.slice(),
-        round2Selected: Array.from(app.round2Selected || []),
-        round2Winners: app.round2Winners.slice(),
-        round2ExtraRemaining: app.round2ExtraRemaining,
-        round2ExtraMode: app.round2ExtraMode,
-        round3Pool: app.round3Pool.slice(),
-        round3Batch: app.round3Batch.slice(),
-        round3Selected: Array.from(app.round3Selected || []),
-        round3Winners: app.round3Winners.slice(),
-        round3ExtraRemaining: app.round3ExtraRemaining,
-        round3ExtraMode: app.round3ExtraMode,
-        round4Pool: app.round4Pool.slice(),
-        round4Pairs: app.round4Pairs.map(pair => pair.slice()),
-        round4PairIndex: app.round4PairIndex,
-        round4CurrentPair: app.round4CurrentPair ? app.round4CurrentPair.slice() : null,
-        round4NextPool: app.round4NextPool.slice(),
-        round4Bye: app.round4Bye,
-        round4Selected: app.round4Selected,
-        finalFour: app.finalFour.slice(),
-        initialRound2Total: app.initialRound2Total,
-        initialRound3Total: app.initialRound3Total,
-        initialRound4Total: app.initialRound4Total,
-        lastProgressKey: app.lastProgressKey,
-        babyFrame: app.babyFrame,
-        progressSpeechTimeline: app.progressSpeechTimeline.slice(),
-        undoStack: (app.undoStack || []).map(serializeUndoEntry),
-        skipNotice: app.skipNotice,
-        compareImportedNames: app.compareImportedNames.slice(),
-        compareCommonNames: app.compareCommonNames.slice(),
-        choiceLog: (app.choiceLog || []).slice()
+        appName: 'baby-name-maker',
+        version: 2,
+        savedAt: new Date().toISOString(),
+        state: {
+          started: app.started,
+          surname: app.surname,
+          genderChoice: app.genderChoice,
+          similarMode: app.similarMode,
+          stage: app.stage,
+          conditionBaseTotal: app.conditionBaseTotal || app.filteredCandidates.length || 0,
+          round1Remaining: app.round1Remaining.slice(),
+          round1Saved: app.round1Saved.slice(),
+          round1TrendShown: {...app.round1TrendShown},
+          currentCardName: app.currentCard ? app.currentCard.name : null,
+          similarPrimary: app.similarPrimary,
+          similarShown: app.similarShown.slice(),
+          similarSelected: Array.from(app.similarSelected),
+          round2Pool: app.round2Pool.slice(),
+          round2Batch: app.round2Batch.slice(),
+          round2Selected: Array.from(app.round2Selected),
+          round2Winners: app.round2Winners.slice(),
+          round2ExtraRemaining: app.round2ExtraRemaining,
+          round2ExtraMode: app.round2ExtraMode,
+          round3Pool: app.round3Pool.slice(),
+          round3Batch: app.round3Batch.slice(),
+          round3Selected: Array.from(app.round3Selected),
+          round3Winners: app.round3Winners.slice(),
+          round3ExtraRemaining: app.round3ExtraRemaining,
+          round3ExtraMode: app.round3ExtraMode,
+          round4Pool: app.round4Pool.slice(),
+          round4Pairs: app.round4Pairs.map(pair => pair.slice()),
+          round4PairIndex: app.round4PairIndex,
+          round4CurrentPair: app.round4CurrentPair ? app.round4CurrentPair.slice() : null,
+          round4NextPool: app.round4NextPool.slice(),
+          round4Bye: app.round4Bye,
+          round4Selected: app.round4Selected,
+          finalFour: app.finalFour.slice(),
+          initialRound2Total: app.initialRound2Total,
+          initialRound3Total: app.initialRound3Total,
+          initialRound4Total: app.initialRound4Total,
+          lastProgressKey: app.lastProgressKey,
+          babyFrame: app.babyFrame,
+          progressSpeechTimeline: app.progressSpeechTimeline.slice(),
+          undoStack: JSON.parse(JSON.stringify(app.undoStack || [])),
+          skipNotice: app.skipNotice,
+          compareImportedNames: app.compareImportedNames.slice(),
+          compareCommonNames: app.compareCommonNames.slice(),
+          choiceHistory: JSON.parse(JSON.stringify(app.choiceHistory || []))
+        }
       };
     }
 
     function saveStateToFile() {
       if (!app.started) {
-        showToast('아직 시작된 진행 상황이 없습니다');
+        showToast('시작 후 저장할 수 있습니다');
         return;
       }
-      const state = getSerializableState();
-      const choiceHistoryText = (state.choiceLog || []).map((row, idx) => {
-        const time = row.at || '';
-        const action = row.action || '';
-        const names = row.names || row.selected || row.savedNames || row.commonNames || row.baseNames || row.primary || row.name || '';
-        const nameText = Array.isArray(names) ? names.map(fullName).join(', ') : (names ? fullName(names) : '');
-        return `${idx + 1}. [${time}] ${row.stage || ''} / ${action}${nameText ? ` / ${nameText}` : ''}`;
-      });
-      const payload = {
-        appName: 'baby-name-maker',
-        version: 1,
-        savedAt: new Date().toISOString(),
-        summary: {
-          surname: app.surname,
-          genderChoice: app.genderChoice,
-          stage: app.stage,
-          currentRound: getRoundLabel(),
-          totalNames: app.filteredCandidates.length,
-          survivors: getCurrentSurvivors().length,
-          round1Saved: app.round1Saved.length,
-          choiceLogCount: state.choiceLog.length
-        },
-        state,
-        choiceHistoryText
-      };
+      const payload = serializeState();
+      const text = JSON.stringify(payload, null, 2);
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${app.surname}_baby_name_state_${stamp}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(a.href);
-      showToast('현재 진행 상황을 저장했습니다');
+      downloadTxt(`${app.surname}_baby_name_state_${stamp}.json`, text);
+      showToast('현재 진행상태를 저장했습니다');
     }
 
-    function openStateFilePicker() {
-      stateFileInput.value = '';
-      stateFileInput.click();
+    function openLoadStatePicker() {
+      loadStateInput.value = '';
+      loadStateInput.click();
     }
 
-    function handleStateFileSelected(e) {
+    function handleLoadStateSelected(e) {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
         try {
-          loadStateFromText(String(reader.result || ''));
+          const payload = JSON.parse(String(reader.result || '{}'));
+          applyLoadedState(payload);
         } catch (err) {
-          console.error(err);
-          showToast('저장 파일을 불러오지 못했습니다');
+          showToast('저장 파일을 읽지 못했습니다');
         }
       };
+      reader.onerror = () => showToast('저장 파일을 읽지 못했습니다');
       reader.readAsText(file, 'utf-8');
     }
 
-    function loadStateFromText(text) {
-      const payload = JSON.parse(text);
-      const state = payload.state || payload;
-      if (!state || !Array.isArray(state.round1Remaining) || !Array.isArray(state.round1Saved)) {
-        throw new Error('Invalid state file');
+    function arr(value) {
+      return Array.isArray(value) ? value.filter(Boolean) : [];
+    }
+
+    function applyLoadedState(payload) {
+      const state = payload && (payload.state || payload);
+      if (!state || !state.surname || !state.stage) {
+        showToast('아기 이름 메이커 저장 파일이 아닙니다');
+        return;
       }
 
-      app.started = !!state.started;
-      app.surname = state.surname || '강';
-      app.genderChoice = state.genderChoice || 'boy';
-      app.similarMode = !!state.similarMode;
-
-      const allMap = Object.fromEntries(CANDIDATES.map(c => [c.name, c]));
-      const savedFilteredNames = Array.isArray(state.filteredCandidateNames) ? state.filteredCandidateNames : [];
-      if (savedFilteredNames.length) {
-        app.filteredCandidates = savedFilteredNames.map(name => allMap[name]).filter(Boolean);
-      } else {
-        const allow = allowedGenders();
-        app.filteredCandidates = CANDIDATES.filter(c => allow.has(c.gender));
-      }
-      app.candidateMap = Object.fromEntries(app.filteredCandidates.map(c => [c.name, c]));
-
-      app.stage = state.stage || (app.started ? 'round1' : 'setup');
-      app.round1Remaining = Array.isArray(state.round1Remaining) ? state.round1Remaining.slice() : [];
-      app.round1Saved = Array.isArray(state.round1Saved) ? state.round1Saved.slice() : [];
-      app.round1TrendShown = state.round1TrendShown || {1:0,2:0,3:0,4:0,5:0};
-      app.currentCard = state.currentCardName ? (app.candidateMap[state.currentCardName] || null) : null;
-      app.similarPrimary = state.similarPrimary || null;
-      app.similarShown = Array.isArray(state.similarShown) ? state.similarShown.slice() : [];
-      app.similarSelected = new Set(Array.isArray(state.similarSelected) ? state.similarSelected : []);
-
-      app.round2Pool = Array.isArray(state.round2Pool) ? state.round2Pool.slice() : [];
-      app.round2Batch = Array.isArray(state.round2Batch) ? state.round2Batch.slice() : [];
-      app.round2Selected = new Set(Array.isArray(state.round2Selected) ? state.round2Selected : []);
-      app.round2Winners = Array.isArray(state.round2Winners) ? state.round2Winners.slice() : [];
-      app.round2ExtraRemaining = Number(state.round2ExtraRemaining || 0);
-      app.round2ExtraMode = !!state.round2ExtraMode;
-
-      app.round3Pool = Array.isArray(state.round3Pool) ? state.round3Pool.slice() : [];
-      app.round3Batch = Array.isArray(state.round3Batch) ? state.round3Batch.slice() : [];
-      app.round3Selected = new Set(Array.isArray(state.round3Selected) ? state.round3Selected : []);
-      app.round3Winners = Array.isArray(state.round3Winners) ? state.round3Winners.slice() : [];
-      app.round3ExtraRemaining = Number(state.round3ExtraRemaining || 0);
-      app.round3ExtraMode = !!state.round3ExtraMode;
-
-      app.round4Pool = Array.isArray(state.round4Pool) ? state.round4Pool.slice() : [];
-      app.round4Pairs = Array.isArray(state.round4Pairs) ? state.round4Pairs.map(pair => pair.slice()) : [];
-      app.round4PairIndex = Number(state.round4PairIndex || 0);
-      app.round4CurrentPair = Array.isArray(state.round4CurrentPair) ? state.round4CurrentPair.slice() : null;
-      app.round4NextPool = Array.isArray(state.round4NextPool) ? state.round4NextPool.slice() : [];
-      app.round4Bye = state.round4Bye || null;
-      app.round4Selected = state.round4Selected || null;
-      app.finalFour = Array.isArray(state.finalFour) ? state.finalFour.slice() : [];
-
-      app.initialRound2Total = Number(state.initialRound2Total || 0);
-      app.initialRound3Total = Number(state.initialRound3Total || 0);
-      app.initialRound4Total = Number(state.initialRound4Total || 0);
-      app.lastProgressKey = state.lastProgressKey || '';
-      app.babyFrame = state.babyFrame || 'up';
-      app.progressSpeechTimeline = Array.isArray(state.progressSpeechTimeline) && state.progressSpeechTimeline.length ? state.progressSpeechTimeline.slice() : buildProgressSpeechTimeline();
-      app.undoStack = Array.isArray(state.undoStack) ? state.undoStack.map(restoreUndoEntry) : [];
-      app.skipNotice = state.skipNotice || '';
-      app.compareImportedNames = Array.isArray(state.compareImportedNames) ? state.compareImportedNames.slice() : [];
-      app.compareCommonNames = Array.isArray(state.compareCommonNames) ? state.compareCommonNames.slice() : [];
-      app.choiceLog = Array.isArray(state.choiceLog) ? state.choiceLog.slice() : [];
+      app.started = Boolean(state.started ?? true);
+      app.surname = String(state.surname || '강');
+      app.genderChoice = state.genderChoice === 'girl' ? 'girl' : 'boy';
+      app.similarMode = Boolean(state.similarMode);
+      app.stage = String(state.stage || 'round1');
 
       surnameInput.value = app.surname;
       genderBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.gender === app.genderChoice));
       similarModeCheck.checked = app.similarMode;
+
+      const allow = allowedGenders();
+      app.filteredCandidates = CANDIDATES.filter(c => allow.has(c.gender));
+      app.candidateMap = Object.fromEntries(app.filteredCandidates.map(c => [c.name, c]));
+      app.conditionBaseTotal = Number(state.conditionBaseTotal) || app.filteredCandidates.length;
+
+      const validNames = list => ensureUnique(arr(list).filter(name => app.candidateMap[name]));
+      app.round1Remaining = validNames(state.round1Remaining);
+      app.round1Saved = validNames(state.round1Saved);
+      app.round1TrendShown = {...{1:0,2:0,3:0,4:0,5:0}, ...(state.round1TrendShown || {})};
+      app.currentCard = state.currentCardName && app.candidateMap[state.currentCardName] ? app.candidateMap[state.currentCardName] : null;
+      app.similarPrimary = state.similarPrimary || null;
+      app.similarShown = validNames(state.similarShown);
+      app.similarSelected = new Set(validNames(state.similarSelected));
+
+      app.round2Pool = validNames(state.round2Pool);
+      app.round2Batch = validNames(state.round2Batch);
+      app.round2Selected = new Set(validNames(state.round2Selected));
+      app.round2Winners = validNames(state.round2Winners);
+      app.round2ExtraRemaining = Number(state.round2ExtraRemaining) || 0;
+      app.round2ExtraMode = Boolean(state.round2ExtraMode);
+
+      app.round3Pool = validNames(state.round3Pool);
+      app.round3Batch = validNames(state.round3Batch);
+      app.round3Selected = new Set(validNames(state.round3Selected));
+      app.round3Winners = validNames(state.round3Winners);
+      app.round3ExtraRemaining = Number(state.round3ExtraRemaining) || 0;
+      app.round3ExtraMode = Boolean(state.round3ExtraMode);
+
+      app.round4Pool = validNames(state.round4Pool);
+      app.round4Pairs = arr(state.round4Pairs).map(pair => validNames(pair)).filter(pair => pair.length === 2);
+      app.round4PairIndex = Number(state.round4PairIndex) || 0;
+      app.round4CurrentPair = state.round4CurrentPair ? validNames(state.round4CurrentPair) : null;
+      if (app.round4CurrentPair && app.round4CurrentPair.length !== 2) app.round4CurrentPair = null;
+      app.round4NextPool = validNames(state.round4NextPool);
+      app.round4Bye = state.round4Bye && app.candidateMap[state.round4Bye] ? state.round4Bye : null;
+      app.round4Selected = state.round4Selected && app.candidateMap[state.round4Selected] ? state.round4Selected : null;
+      app.finalFour = validNames(state.finalFour);
+
+      app.initialRound2Total = Number(state.initialRound2Total) || 0;
+      app.initialRound3Total = Number(state.initialRound3Total) || 0;
+      app.initialRound4Total = Number(state.initialRound4Total) || 0;
+      app.lastProgressKey = state.lastProgressKey || '';
+      app.babyFrame = state.babyFrame === 'down' ? 'down' : 'up';
+      app.progressSpeechTimeline = arr(state.progressSpeechTimeline).length ? arr(state.progressSpeechTimeline) : buildProgressSpeechTimeline();
+      app.undoStack = arr(state.undoStack);
+      app.skipNotice = state.skipNotice || '';
+      app.compareImportedNames = validNames(state.compareImportedNames);
+      app.compareCommonNames = validNames(state.compareCommonNames);
+      app.choiceHistory = arr(state.choiceHistory);
+
       setupOverlay.classList.toggle('show', !app.started);
       guideOverlay.classList.remove('show');
       closeSavedOverlay();
       closeCompareOverlay();
-      hideUndoPeek();
-      drawer.classList.remove('open');
       render();
-      showToast('저장된 진행 상황을 불러왔습니다');
+      showToast('저장된 진행상태를 불러왔습니다');
     }
 
     function exportRound1SavedTxt() {
@@ -1459,7 +1475,6 @@
 
     function continueAfterComparison(mode) {
       closeCompareOverlay();
-      logChoice('comparison_continue', { mode, commonNames: app.compareCommonNames.slice(), importedNames: app.compareImportedNames.slice(), baseNames: getComparisonBaseNames().slice() });
       if (mode === 'common') {
         const common = app.compareCommonNames.slice();
         if (!common.length) {
@@ -1467,6 +1482,7 @@
           return;
         }
         if (app.stage === 'round2Intro') {
+          logChoice('compare_use_common', { commonCount: common.length, baseStage: app.stage });
           app.round1Saved = common;
           app.round2Winners = [];
           if (common.length <= ROUND2_SKIP_THRESHOLD) {
@@ -1477,6 +1493,7 @@
           return;
         }
         if (app.stage === 'round3Intro') {
+          logChoice('compare_use_common', { commonCount: common.length, baseStage: app.stage });
           app.round2Winners = common;
           if (common.length <= ROUND3_SKIP_THRESHOLD) {
             advanceAfterRound2();
@@ -1486,6 +1503,7 @@
           return;
         }
       }
+      logChoice('compare_use_mine', { baseStage: app.stage });
       continueCurrentIntro();
     }
 
@@ -1592,16 +1610,18 @@
       babyIcon.src = app.babyFrame === 'up' ? BABY_IMG_UP : BABY_IMG_DOWN;
       progressSpeech.textContent = getProgressSpeech(round1Progress);
 
-      const total = app.started ? (app.filteredCandidates.length || 0) : CANDIDATES.length;
+      const filtered = app.filteredCandidates.length || 0;
+      const totalAll = app.started ? (app.conditionBaseTotal || filtered) : CANDIDATES.length;
       const kept = app.round1Saved.length || 0;
       const survivors = getCurrentSurvivors().length || 0;
+      const conditionLine = app.started ? `<div><b>적용 조건</b> ${app.surname} / ${getGenderLabel()}</div>` : '';
 
       statsBox.innerHTML = `
-        <div><b>전체 이름</b> ${total.toLocaleString()}개</div>
+        <div><b>전체 이름</b> ${totalAll.toLocaleString()}개</div>
+        ${conditionLine}
         <div><b>현재 라운드</b> ${getRoundLabel()}</div>
         <div><b>1라운드 보관</b> ${kept.toLocaleString()}개</div>
         <div><b>현재 생존</b> ${survivors.toLocaleString()}개</div>
-        <div><b>선택 기록</b> ${(app.choiceLog?.length || 0).toLocaleString()}건</div>
       `;
       metaBox.innerHTML = '';
     }
@@ -1622,7 +1642,6 @@
 
     function skipToNextRound() {
       if (!app.started) return;
-      logChoice('skip_to_next_round', { fromStage: app.stage, survivors: getCurrentSurvivors().slice() });
       seedStageForPreview();
 
       if (app.stage === 'round1' || app.stage === 'similarPick' || app.stage === 'round2Intro') {
@@ -1891,7 +1910,7 @@
       }
 
       addRound1Saved([current.name]);
-      logChoice('round1_keep', { name: current.name, trend: current.trend, gender: current.gender });
+      logChoice('round1_keep', { selected: current.name, selectedFull: fullName(current.name) });
       pushUndo({ type: 'keep', item: current });
       showToast(`${fullName(current.name)} 보관`);
       render();
@@ -1900,7 +1919,7 @@
     function onRound1Discard() {
       const current = consumeRound1Current();
       if (!current) return;
-      logChoice('round1_discard', { name: current.name, trend: current.trend, gender: current.gender });
+      logChoice('round1_discard', { selected: current.name, selectedFull: fullName(current.name) });
       pushUndo({ type: 'discard', item: current });
       showToast(`${fullName(current.name)} 넘기기`);
       render();
@@ -1934,8 +1953,8 @@
     function submitSimilarPick() {
       const selectedNames = Array.from(app.similarSelected);
       const primaryObj = app.candidateMap[app.similarPrimary];
-      logChoice('round1_similar_submit', { primary: app.similarPrimary, shown: app.similarShown.slice(), selected: selectedNames.slice(), savedNames: [app.similarPrimary, ...selectedNames] });
       addRound1Saved([app.similarPrimary, ...selectedNames]);
+      logChoice('round1_similar_keep', { primary: app.similarPrimary, selected: [app.similarPrimary, ...selectedNames], selectedFull: [app.similarPrimary, ...selectedNames].map(fullName) });
       app.round1Remaining = app.round1Remaining.filter(name => !app.similarShown.includes(name));
       pushUndo({ type: 'similar', primary: primaryObj, savedNames: [app.similarPrimary, ...selectedNames], restoreNames: [app.similarPrimary, ...app.similarShown] });
 
@@ -2027,7 +2046,7 @@
         return;
       }
       const selected = Array.from(app.round2Selected);
-      logChoice('round2_batch_submit', { batch: app.round2Batch.slice(), selected: selected.slice(), basicPickCount: need, extraUsed: selected.length > need && app.round2ExtraMode && app.round2ExtraRemaining > 0, extraRemainingBefore: app.round2ExtraRemaining });
+      logChoice('round2_select', { batch: app.round2Batch.slice(), selected, selectedFull: selected.map(fullName), usedExtra: selected.length > need });
       app.round2Winners.push(...selected);
       if (selected.length > need && app.round2ExtraMode && app.round2ExtraRemaining > 0) {
         app.round2ExtraRemaining -= 1;
@@ -2107,7 +2126,7 @@
       }
 
       const selected = Array.from(app.round3Selected);
-      logChoice('round3_batch_submit', { batch: app.round3Batch.slice(), selected: selected.slice(), extraUsed: selected.length === 2 && app.round3ExtraMode && app.round3ExtraRemaining > 0, extraRemainingBefore: app.round3ExtraRemaining });
+      logChoice('round3_select', { batch: app.round3Batch.slice(), selected, selectedFull: selected.map(fullName), usedExtra: selected.length === 2 });
       app.round3Winners.push(...selected);
 
       if (selected.length === 2 && app.round3ExtraMode && app.round3ExtraRemaining > 0) {
@@ -2189,7 +2208,7 @@
         return;
       }
 
-      logChoice('round4_pick_winner', { pair: app.round4CurrentPair ? app.round4CurrentPair.slice() : [], selected: app.round4Selected, bye: app.round4Bye || null });
+      logChoice('round4_pick', { pair: app.round4CurrentPair ? app.round4CurrentPair.slice() : [], selected: app.round4Selected, selectedFull: fullName(app.round4Selected) });
       app.round4NextPool.push(app.round4Selected);
       app.round4PairIndex += 1;
 
