@@ -716,6 +716,7 @@
       similarPrimary: null,
       similarShown: [],
       similarSelected: new Set(),
+      similarOriginAction: null,
 
       round2Pool: [],
       round2Batch: [],
@@ -920,6 +921,7 @@
         app.similarPrimary = null;
         app.similarShown = [];
         app.similarSelected = new Set();
+        app.similarOriginAction = null;
         app.stage = "round1";
       }
       logChoice('undo', { undoneType: last.type });
@@ -1061,6 +1063,7 @@
       app.similarPrimary = null;
       app.similarShown = [];
       app.similarSelected = new Set();
+      app.similarOriginAction = null;
       app.round2Pool = [];
       app.round2Batch = [];
       app.round2Selected = new Set();
@@ -1237,6 +1240,7 @@
           similarPrimary: app.similarPrimary,
           similarShown: app.similarShown.slice(),
           similarSelected: Array.from(app.similarSelected),
+          similarOriginAction: app.similarOriginAction,
           round2Pool: app.round2Pool.slice(),
           round2Batch: app.round2Batch.slice(),
           round2Selected: Array.from(app.round2Selected),
@@ -1339,6 +1343,7 @@
       app.similarPrimary = state.similarPrimary || null;
       app.similarShown = validNames(state.similarShown);
       app.similarSelected = new Set(validNames(state.similarSelected));
+      app.similarOriginAction = state.similarOriginAction === 'discard' ? 'discard' : (state.similarOriginAction === 'keep' ? 'keep' : null);
 
       app.round2Pool = validNames(state.round2Pool);
       app.round2Batch = validNames(state.round2Batch);
@@ -1892,22 +1897,27 @@
       }
     }
 
+    function openSimilarPick(current, originAction) {
+      if (!app.similarMode) return false;
+
+      const comp = similarityMap[current.name] || [];
+      const allowed = comp.filter(name => name !== current.name && app.round1Remaining.includes(name) && app.candidateMap[name]);
+      if (!allowed.length) return false;
+
+      app.similarPrimary = current.name;
+      app.similarOriginAction = originAction;
+      app.similarShown = sample(allowed, Math.min(3, allowed.length));
+      app.similarSelected = new Set(originAction === 'keep' ? [current.name] : []);
+      app.stage = 'similarPick';
+      render();
+      return true;
+    }
+
     function onRound1Keep() {
       const current = consumeRound1Current();
       if (!current) return;
 
-      if (app.similarMode) {
-        const comp = similarityMap[current.name] || [];
-        const allowed = comp.filter(name => name !== current.name && app.round1Remaining.includes(name) && app.candidateMap[name]);
-        if (allowed.length > 0) {
-          app.similarPrimary = current.name;
-          app.similarShown = sample(allowed, Math.min(3, allowed.length));
-          app.similarSelected = new Set();
-          app.stage = 'similarPick';
-          render();
-          return;
-        }
-      }
+      if (openSimilarPick(current, 'keep')) return;
 
       addRound1Saved([current.name]);
       logChoice('round1_keep', { selected: current.name, selectedFull: fullName(current.name) });
@@ -1919,6 +1929,9 @@
     function onRound1Discard() {
       const current = consumeRound1Current();
       if (!current) return;
+
+      if (openSimilarPick(current, 'discard')) return;
+
       logChoice('round1_discard', { selected: current.name, selectedFull: fullName(current.name) });
       pushUndo({ type: 'discard', item: current });
       showToast(`${fullName(current.name)} 넘기기`);
@@ -1928,16 +1941,19 @@
     function renderSimilarPick() {
       const primary = app.candidateMap[app.similarPrimary];
       const similars = app.similarShown.map(name => app.candidateMap[name]).filter(Boolean);
-      const one = similars.length === 1;
+      const one = similars.length === 0;
+      const originText = app.similarOriginAction === 'discard'
+        ? '넘긴 이름과 비슷한 후보입니다. 마음에 드는 이름만 체크해서 보관하세요.'
+        : '보관한 이름과 비슷한 후보입니다. 최초 선택 이름도 다시 눌러 체크를 바꿀 수 있습니다.';
 
       stageArea.innerHTML = `
+        <div class="sub-banner">${originText}</div>
         <div class="grid similar ${one ? 'one' : 'multi'}" id="similarGrid"></div>
       `;
 
       const grid = document.getElementById('similarGrid');
-      grid.appendChild(createPickCard(primary, { selected: true, fixed: true }));
-
-      similars.forEach(item => {
+      const allItems = [primary, ...similars].filter(Boolean);
+      allItems.forEach(item => {
         const card = createPickCard(item, {
           selected: app.similarSelected.has(item.name),
           onClick: () => {
@@ -1953,16 +1969,29 @@
     function submitSimilarPick() {
       const selectedNames = Array.from(app.similarSelected);
       const primaryObj = app.candidateMap[app.similarPrimary];
-      addRound1Saved([app.similarPrimary, ...selectedNames]);
-      logChoice('round1_similar_keep', { primary: app.similarPrimary, selected: [app.similarPrimary, ...selectedNames], selectedFull: [app.similarPrimary, ...selectedNames].map(fullName) });
+      addRound1Saved(selectedNames);
+      logChoice('round1_similar_review', {
+        originAction: app.similarOriginAction || 'keep',
+        primary: app.similarPrimary,
+        shown: app.similarShown.slice(),
+        selected: selectedNames,
+        selectedFull: selectedNames.map(fullName)
+      });
       app.round1Remaining = app.round1Remaining.filter(name => !app.similarShown.includes(name));
-      pushUndo({ type: 'similar', primary: primaryObj, savedNames: [app.similarPrimary, ...selectedNames], restoreNames: [app.similarPrimary, ...app.similarShown] });
+      pushUndo({
+        type: 'similar',
+        primary: primaryObj,
+        originAction: app.similarOriginAction || 'keep',
+        savedNames: selectedNames,
+        restoreNames: [app.similarPrimary, ...app.similarShown]
+      });
 
       app.similarPrimary = null;
       app.similarShown = [];
       app.similarSelected = new Set();
+      app.similarOriginAction = null;
       app.stage = 'round1';
-      showToast('유사사례 선택을 반영했습니다');
+      showToast(selectedNames.length ? '유사사례 선택을 반영했습니다' : '이번 유사사례는 모두 넘겼습니다');
       render();
     }
 
